@@ -7,7 +7,7 @@
 
 .gradletasknamecache
 
-opencv/
+/opencv/
 build/
 out/
 target/
