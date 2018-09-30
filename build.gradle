@@ -1,0 +1,160 @@
+description = "Includes opencv and tesseract dependencies"
+import static org.apache.tools.ant.taskdefs.condition.Os.*
+
+buildscript {
+    // opencv settings
+    ext.opencv_version = '3.4.2'
+    ext.opencv = 'opencv'
+    ext.commonsio_version = '2.6'
+    ext.tess4j_version = '4.0.2'
+    ext.junit_version = '4.12'
+    repositories {
+        maven {
+            url "https://plugins.gradle.org/m2/"
+        }
+    }
+    dependencies {
+        classpath "de.undercouch:gradle-download-task:3.4.3"
+    }
+}
+
+apply plugin: "idea"
+apply plugin: "java-library"
+apply plugin: "maven"
+apply plugin: "de.undercouch.download"
+
+repositories {
+    jcenter()
+    mavenCentral()
+}
+
+sourceCompatibility = '1.8'
+targetCompatibility = '1.8'
+
+idea {
+    module {
+        downloadJavadoc = true
+        downloadSources = true
+    }
+}
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}
+
+tasks.withType(Javadoc) {
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
+
+/**
+ * opencv settings
+ */
+
+// the windows executeable to install opencv
+def opencvExe = new File(projectDir, "$opencv/opencv-${opencv_version}.exe")
+
+// the windows opencv download path
+def opencvExeUrl = "https://sourceforge.net/projects/opencvlibrary/files/opencv-win/$opencv_version/opencv-${opencv_version}-vc14_vc15.exe/download"
+
+// the windows path to store the opencv files
+def windowsOpencvPath = new File(projectDir, "$opencv/opencv")
+
+// the windows path to the opencv jar
+def windowsOpencvBuildJava = new File(projectDir, "$opencv/opencv/build/java")
+
+// the macos homebrew opencv installation path
+def macOsOpencvPath = "/usr/local/Cellar/opencv/${opencv_version}/share/OpenCV/java/"
+
+// the env variable to force a specific opencv path
+def opencvPathenv = System.getenv('OPENCV_PATH')
+
+
+//tesseract settings
+ext.tesseract_version = '3.05.02'
+def macOsTesseractPath = "/usr/local/Cellar/tesseract/${tesseract_version}/lib"
+
+
+dependencies {
+    api "net.sourceforge.tess4j:tess4j:$tess4j_version"
+    implementation "commons-io:commons-io:$commonsio_version"
+    testImplementation "junit:junit:$junit_version"
+
+    if (isFamily(FAMILY_WINDOWS)) {
+        compile fileTree(dir: windowsOpencvBuildJava, include: ['*.jar'])
+    } else if (isFamily(FAMILY_MAC)) {
+        if (opencvPathenv == null) {
+            def dir = new File(macOsOpencvPath)
+            if (!dir.exists()) {
+                throw new GradleException("""NO OPENCV SOURCES FOUND!
+${macOsOpencvPath} does not exist. Make sure you installed opencv as described here:
+http://opencv-java-tutorials.readthedocs.io/en/latest/01-installing-opencv-for-java.html#install-opencv-3-x-under-macos
+Alternatively you can set the 'OPENCV_PATH' to use a different location
+""")
+            }
+            api fileTree(dir: dir, include: ['*.jar'])
+        } else {
+            def dir = new File(opencvPathenv)
+            if (!dir.exists()) {
+                throw new GradleException("""NO OPENCV SOURCES FOUND!
+${opencvPathenv} does not exist.
+Make sure the 'OPENCV_PATH' points to the right directory
+""")
+            }
+            api fileTree(dir: dir, include: ['*.jar'])
+        }
+    } else {
+        throw new GradleException("Your System is currently not supported.")
+    }
+
+}
+
+task downloadOpencv {
+
+    download {
+        src opencvExeUrl
+        dest opencvExe
+        overwrite false
+    }
+    if (isFamily(FAMILY_WINDOWS)) {
+        if (!windowsOpencvPath.exists()) {
+            if (!opencvExe.exists())
+                throw new GradleException("Cant unpack opencv, because no executable was found at ${opencvExe.toString()}")
+            println "${opencvExe.toString()}"
+            exec {
+                commandLine opencvExe.toString(), '-y'
+            }
+        }
+    }
+}
+
+if (isFamily(FAMILY_WINDOWS)) {
+    build.dependsOn 'downloadOpencv'
+}
+
+// makes sure the opencv shared libs are packed
+jar {
+    if (isFamily(FAMILY_WINDOWS)) {
+        into 'win32-x86', {
+            from new File(windowsOpencvBuildJava, "x86")
+        }
+        into 'win32-x86-64', {
+            from new File(windowsOpencvBuildJava, "x64")
+        }
+    }
+
+    if (isFamily(FAMILY_MAC)) {
+        into 'darwin', {
+            from(macOsOpencvPath) {
+                include "*.dylib"
+            }
+            // is unnecessary since the brew install puts the tesseract lib already on the jna path
+//            from(macOsTesseractPath) {
+//                include "*3.dylib"
+//            }
+        }
+    }
+}
+
+wrapper {
+    gradleVersion = '4.10'
+}

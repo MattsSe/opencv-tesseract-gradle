@@ -1,0 +1,16 @@
+*.iml
+*.ipr
+*.DS_Store
+.classpath
+.project
+!gradle-wrapper.jar
+
+.gradletasknamecache
+
+opencv/
+build/
+out/
+target/
+.idea/
+.gradle
+.settings/
